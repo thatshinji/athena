@@ -59,7 +59,7 @@ class DeepSeekAnalyst:
             signals, ensure_ascii=False, indent=2, default=str
         )
 
-        user_prompt = build_research_prompt(symbol, evidence_json, signals_json)
+        user_prompt = build_research_prompt(symbol, evidence_json, signals_json, ups_range, downs_range)
 
         # 调用 DeepSeek API
         response = self._http.post(
