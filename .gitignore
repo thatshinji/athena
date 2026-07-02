@@ -1,0 +1,34 @@
+# 敏感文件
+.env
+*.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+
+# 输出报告
+athena/outputs/*.md
+athena/outputs/*.json
+
+# 历史案例（含真实数据）
+athena/validation/case_data/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# pytest
+.pytest_cache/
+
+# Tool artifacts
+reasonix.toml
+.reasonix/
