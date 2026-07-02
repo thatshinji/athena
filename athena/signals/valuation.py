@@ -117,6 +117,12 @@ def compute_valuation_signals(
     ps = val.get("ps", {})
     if ps and ps.get("current"):
         signals["ps"] = {"current": ps["current"], "high": ps.get("high"), "low": ps.get("low")}
+        ps_claim = f"P/S={ps['current']}" + (f" (历史区间 {ps['low']}-{ps['high']})" if ps.get('low') and ps.get('high') else "")
+        research_inputs["VL-005"] = {
+            "label": "P/S Ratio",
+            "claim": ps_claim,
+            "assessment": "Low" if ps["current"] < 5 else "Moderate" if ps["current"] < 15 else "High",
+        }
 
     # ---- VL-003 FCF Yield ----
     fin = fund_data.get("financial_report", {})
@@ -145,7 +151,7 @@ def compute_valuation_signals(
                 ev_ebitda = round(ev / op_inc["latest_value"], 1)
                 signals["ev_ebitda"] = ev_ebitda
                 research_inputs["VL-004"] = {
-                    "label": "EV/EBIT",
+                    "label": "EV/EBIT (≈EBITDA)",
                     "claim": f"EV/EBIT≈{ev_ebitda} (EV=${ev/1e9:.0f}B / EBIT=${op_inc['latest_value']/1e9:.1f}B)",
                     "assessment": "Undervalued" if ev_ebitda < 10 else "Fair" if ev_ebitda < 20 else "Expensive",
                 }

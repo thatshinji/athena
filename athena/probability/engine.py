@@ -78,8 +78,10 @@ def estimate_probability(signals: Dict, latest_price: float) -> Dict:
         confidence = "High"
     elif gap_ratio > 0.3 and total >= 4:
         confidence = "Medium"
-    elif gap_ratio > 0.15:
+    elif gap_ratio > 0.15 and total >= 2:
         confidence = "Low"
+    elif total > 0:
+        confidence = "Very Low"
     else:
         confidence = "Low"
 
