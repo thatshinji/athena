@@ -149,16 +149,58 @@ def estimate_probability(
     }
 
 
-def _classify_status(prob_result: Dict) -> str:
-    """根据概率结果判断 Candidate/Watch/Reject/Risk Alert"""
+def _classify_status(prob_result: Dict, signals: Dict = None) -> str:
+    """根据概率 + 7 个 Candidate 条件判断（08_RISK §2）"""
     up_low = prob_result["upside_probability_range"][0]
     down_high = prob_result["downside_probability_range"][1]
+    factors = prob_result.get("factors", {})
 
-    if up_low > 33 and down_high < up_low:
+    # 基础概率条件
+    candidate_prob = up_low > 33 and down_high < up_low
+    risk_alert_prob = down_high > 50
+    reject_prob = up_low < 20
+
+    # 用信号数据检查剩余条件（如果提供）
+    extra_checks_pass = True
+    extra_checks_fail_reason = ""
+    if signals:
+        tech = signals.get("technical", {})
+        fund = signals.get("fundamental", {})
+        val = signals.get("valuation", {})
+        risk = signals.get("risk", {})
+
+        # 条件 4: 技术面不破坏止损
+        stop_feasible = tech.get("volatility", {}).get("atr_stop_assessment", {}).get("stop_loss_feasible")
+        if stop_feasible is False:
+            extra_checks_pass = False
+            extra_checks_fail_reason = "止损不可执行"
+
+        # 条件 5: 基本面或预期至少一项改善
+        eps_beat = fund.get("eps", {}).get("beat_pct", 0) or 0
+        rev_yoy = fund.get("revenue_yoy", 0) or 0
+        if eps_beat <= 0 and rev_yoy <= 0:
+            extra_checks_pass = False
+            extra_checks_fail_reason = "基本面无改善"
+
+        # 条件 6: 估值未严重透支
+        pe = val.get("trailing_pe", {}).get("current")
+        fwd_pe = val.get("forward_pe", {}).get("value")
+        if (pe and pe > 100) or (fwd_pe and fwd_pe > 80):
+            extra_checks_pass = False
+            extra_checks_fail_reason = "估值严重透支"
+
+        # 条件 7: 无重大单点风险
+        risk_score = risk.get("risk_score", 0) or 0
+        if risk_score >= 7:
+            extra_checks_pass = False
+            extra_checks_fail_reason = f"风险评分过高 ({risk_score}/10)"
+
+    # 综合判断
+    if candidate_prob and extra_checks_pass:
         return "Candidate"
-    elif down_high > 50:
-        return "Risk Alert"
-    elif up_low < 20:
+    elif risk_alert_prob or (candidate_prob and not extra_checks_pass):
+        return "Risk Alert" if down_high > 40 else "Watch"
+    elif reject_prob:
         return "Reject"
     else:
         return "Watch"

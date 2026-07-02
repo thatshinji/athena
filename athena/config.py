@@ -42,6 +42,11 @@ class Settings:
     default_days: int = 250  # 默认拉取 250 个交易日
     default_horizon_months: str = "3-6m"
 
+    # Quiver Quantitative (国会交易/内幕)
+    quiver_api_key: str = field(
+        default_factory=lambda: os.getenv("QUIVER_API_KEY", "")
+    )
+
     @property
     def longbridge_configured(self) -> bool:
         return bool(self.longbridge_app_key and self.longbridge_app_secret)
@@ -49,6 +54,10 @@ class Settings:
     @property
     def deepseek_configured(self) -> bool:
         return bool(self.deepseek_api_key)
+
+    @property
+    def quiver_configured(self) -> bool:
+        return bool(self.quiver_api_key)
 
 
 # 全局单例

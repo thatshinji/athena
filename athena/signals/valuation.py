@@ -116,11 +116,39 @@ def compute_valuation_signals(
     # ---- PS ----
     ps = val.get("ps", {})
     if ps and ps.get("current"):
-        signals["ps"] = {
-            "current": ps["current"],
-            "high": ps.get("high"),
-            "low": ps.get("low"),
-        }
+        signals["ps"] = {"current": ps["current"], "high": ps.get("high"), "low": ps.get("low")}
+
+    # ---- VL-003 FCF Yield ----
+    fin = fund_data.get("financial_report", {})
+    fcf = fin.get("free_cash_flow", {})
+    ni_is = fin.get("net_income", {})
+    eps_is = fin.get("eps", {})
+    net_debt = fin.get("net_debt", {})
+    op_inc = fin.get("operating_income", {})
+
+    if fcf.get("latest_value") and latest_price > 0 and ni_is.get("latest_value") and eps_is.get("latest_value"):
+        # 估算市值: 股价 × (净利润 / EPS)
+        implied_shares = ni_is["latest_value"] / eps_is["latest_value"] if eps_is["latest_value"] else 0
+        if implied_shares > 0:
+            market_cap = latest_price * implied_shares
+            fcf_yield = round(fcf["latest_value"] / market_cap * 100, 1)
+            signals["fcf_yield"] = fcf_yield
+            research_inputs["VL-003"] = {
+                "label": "FCF Yield",
+                "claim": f"FCF 收益率 {fcf_yield}% (FCF=${fcf['latest_value']/1e9:.1f}B / 市值≈${market_cap/1e9:.0f}B)",
+                "assessment": "Excellent" if fcf_yield > 5 else "Good" if fcf_yield > 2 else "Low",
+            }
+
+            # ---- VL-004 EV/EBITDA ----
+            if net_debt.get("latest_value") is not None and op_inc.get("latest_value") and op_inc["latest_value"] > 0:
+                ev = market_cap + net_debt["latest_value"]
+                ev_ebitda = round(ev / op_inc["latest_value"], 1)
+                signals["ev_ebitda"] = ev_ebitda
+                research_inputs["VL-004"] = {
+                    "label": "EV/EBIT",
+                    "claim": f"EV/EBIT≈{ev_ebitda} (EV=${ev/1e9:.0f}B / EBIT=${op_inc['latest_value']/1e9:.1f}B)",
+                    "assessment": "Undervalued" if ev_ebitda < 10 else "Fair" if ev_ebitda < 20 else "Expensive",
+                }
 
     # ---- 综合判断 ----
     if pe:

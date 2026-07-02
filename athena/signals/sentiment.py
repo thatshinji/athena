@@ -1,93 +1,99 @@
 """情绪信号模块。
 
-从新闻标题关键词判断市场情绪方向。
-在没有专用社交数据源的情况下，用新闻作为情绪 proxy。
+结合新闻标题 + LongPort 社区讨论计算情绪。
 """
 
 from typing import Any, Dict, List, Optional
 
-# 正/负面情绪关键词
 POSITIVE_KW = [
     "beat", "超预期", "上调", "upgrade", "增长", "创新高", "突破",
     "launch", "推出", "合作", "partnership", "订单", "contract",
     "buyback", "回购", "dividend", "分红", "expansion", "扩张",
-    "approval", "获批", "award", "获奖", "领先",
+    "approval", "获批", "award", "获奖", "领先", "bullish",
 ]
 NEGATIVE_KW = [
     "miss", "低于预期", "下调", "downgrade", "下滑", "下跌", "暴跌",
     "lawsuit", "诉讼", "罚款", "fine", "调查", "investigation",
     "delay", "延迟", "推迟", "召回", "recall", "裁员", "layoff",
     "shortage", "短缺", "warning", "警告", "risk", "风险",
-    "crash", "崩盘", "collapse", "破产",
+    "crash", "崩盘", "collapse", "破产", "bearish",
 ]
 
 
-def compute_sentiment_signals(
-    news_list: Optional[List[Dict[str, Any]]],
-) -> Dict:
-    """从新闻标题分析情绪。
-
-    Returns:
-        {"signals": {...}, "research_inputs": {...}}
-    """
-    if not news_list:
-        return {
-            "signals": {"available": False, "description": "情绪数据不可用"},
-            "research_inputs": {"SE-001": {"label": "News Sentiment", "claim": "无数据", "assessment": "N/A"}},
-        }
-
+def _analyze_texts(items: List[Dict], text_fields: List[str]) -> Dict:
+    """通用文本情绪分析。"""
     positive = 0
     negative = 0
     total = 0
-
-    for article in news_list[:20]:
-        title = (article.get("title", "") + " " + article.get("description", "")).lower()
+    for item in items[:30]:
+        text = " ".join(item.get(f, "") for f in text_fields).lower()
+        if not text.strip():
+            continue
         total += 1
-        pos_hit = any(kw.lower() in title for kw in POSITIVE_KW)
-        neg_hit = any(kw.lower() in title for kw in NEGATIVE_KW)
-
+        pos_hit = any(kw in text for kw in POSITIVE_KW)
+        neg_hit = any(kw in text for kw in NEGATIVE_KW)
         if pos_hit and not neg_hit:
             positive += 1
         elif neg_hit and not pos_hit:
             negative += 1
-        # both or neither = neutral
-
     if total == 0:
-        return {
-            "signals": {"available": False, "description": "无新闻数据"},
-            "research_inputs": {"SE-001": {"label": "News Sentiment", "claim": "无数据", "assessment": "N/A"}},
-        }
-
+        return {"available": False, "total": 0}
     pos_ratio = round(positive / total * 100, 1)
     neg_ratio = round(negative / total * 100, 1)
-    neutral_ratio = round(100 - pos_ratio - neg_ratio, 1)
-
     if pos_ratio > neg_ratio * 1.5:
         direction = "positive"
-        desc = f"情绪偏正面 (正面 {pos_ratio}% vs 负面 {neg_ratio}%)"
     elif neg_ratio > pos_ratio * 1.5:
         direction = "negative"
-        desc = f"情绪偏负面 (负面 {neg_ratio}% vs 正面 {pos_ratio}%)"
     else:
         direction = "neutral"
-        desc = f"情绪中性 (正面 {pos_ratio}%, 负面 {neg_ratio}%)"
+    return {"available": True, "total": total, "positive_pct": pos_ratio,
+            "negative_pct": neg_ratio, "direction": direction}
 
-    signals = {
-        "available": True,
-        "total_articles": total,
-        "positive_pct": pos_ratio,
-        "negative_pct": neg_ratio,
-        "neutral_pct": neutral_ratio,
-        "direction": direction,
-        "description": desc,
-    }
 
-    research_inputs = {
-        "SE-001": {
-            "label": "News Sentiment",
-            "claim": desc,
-            "assessment": "Bullish" if direction == "positive" else "Bearish" if direction == "negative" else "Neutral",
-        },
-    }
+def compute_sentiment_signals(
+    news_list: Optional[List[Dict[str, Any]]],
+    community_topics: Optional[List[Dict[str, Any]]] = None,
+) -> Dict:
+    signals = {"available": False}
+    research_inputs = {}
+
+    # ---- SE-001 News Sentiment ----
+    if news_list:
+        ns = _analyze_texts(news_list, ["title", "description"])
+        if ns["available"]:
+            signals["available"] = True
+            signals["news"] = ns
+            desc = f"新闻情绪{'偏正面' if ns['direction']=='positive' else '偏负面' if ns['direction']=='negative' else '中性'}"
+            desc += f" (正面 {ns['positive_pct']}% vs 负面 {ns['negative_pct']}%)"
+            research_inputs["SE-001"] = {"label": "News Sentiment", "claim": desc,
+                "assessment": "Bullish" if ns["direction"] == "positive" else "Bearish" if ns["direction"] == "negative" else "Neutral"}
+
+    # ---- SE-002 Community Sentiment (LongPort) ----
+    if community_topics:
+        cs = _analyze_texts(community_topics, ["title", "description"])
+        if cs["available"]:
+            signals["available"] = True
+            # 计算互动指标
+            total_likes = sum(t.get("likes", 0) or 0 for t in community_topics)
+            total_comments = sum(t.get("comments", 0) or 0 for t in community_topics)
+            engagement = "high" if total_likes + total_comments > 100 else "moderate" if total_likes + total_comments > 10 else "low"
+
+            desc = f"社区讨论 {cs['total']} 条 (👍{total_likes} 💬{total_comments}), "
+            desc += f"情绪{'偏正面' if cs['direction']=='positive' else '偏负面' if cs['direction']=='negative' else '中性'}"
+            signals["community"] = {"topic_count": cs["total"], "likes": total_likes,
+                                     "comments": total_comments, "engagement": engagement,
+                                     "direction": cs["direction"]}
+            research_inputs["SE-002"] = {"label": "Community Sentiment", "claim": desc,
+                "assessment": "Bullish" if cs["direction"] == "positive" else "Bearish" if cs["direction"] == "negative" else "Neutral"}
+
+    if not signals["available"]:
+        signals["description"] = "情绪数据不可用"
+    else:
+        parts = []
+        if "news" in signals:
+            parts.append(f"news_{signals['news']['direction']}")
+        if "community" in signals:
+            parts.append(f"community_{signals['community']['direction']}")
+        signals["description"] = " / ".join(parts)
 
     return {"signals": signals, "research_inputs": research_inputs}

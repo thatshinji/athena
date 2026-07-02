@@ -64,6 +64,28 @@ def compute_fundamental_signals(fund_data: Optional[Dict[str, Any]], latest_pric
         research_inputs["BQ-003"] = {"label": "Net Margin", "claim": f"净利率 {nm['latest_value']:.1f}%",
             "assessment": "Excellent" if nm["latest_value"] > 20 else "Good" if nm["latest_value"] > 10 else "Thin"}
 
+    # ---- Operating Margin ----
+    oi = fin.get("operating_income", {})
+    rev = fin.get("revenue", {})
+    if oi.get("latest_value") and rev.get("latest_value"):
+        op_margin = round(oi["latest_value"] / rev["latest_value"] * 100, 1)
+        signals["operating_margin"] = op_margin
+        research_inputs["BQ-003a"] = {"label": "Operating Margin",
+            "claim": f"营业利润率 {op_margin}%",
+            "assessment": "Excellent" if op_margin > 25 else "Good" if op_margin > 15 else "Thin"}
+
+    # ---- Net Income ----
+    ni = fin.get("net_income", {})
+    if ni.get("latest_value") is not None:
+        signals["net_income_billion"] = round(ni["latest_value"] / 1e9, 1)
+        ni_yoy = ni.get("latest_yoy")
+        desc = f"净利润 ${ni['latest_value']/1e9:.1f}B"
+        if ni_yoy is not None:
+            desc += f" (YoY {ni_yoy:+.1f}%)"
+        research_inputs["BQ-003b"] = {"label": "Net Income",
+            "claim": desc,
+            "assessment": "Growing" if (ni_yoy and ni_yoy > 5) else "Stable" if (ni_yoy and ni_yoy > -5) else "Declining"}
+
     # ---- ROE ----
     roe = fin.get("roe", {})
     if roe.get("latest_value") is not None:
@@ -87,6 +109,22 @@ def compute_fundamental_signals(fund_data: Optional[Dict[str, Any]], latest_pric
         research_inputs["GR-004"] = {"label": "Estimate Revision",
             "claim": f"EPS 实际=${actual_eps:.2f} vs 预期=${est_eps:.2f} ({'+' if eps_beat>0 else ''}{eps_beat}%)",
             "assessment": "Upward Revision" if eps_beat > 3 else "Slight Beat" if eps_beat > 0 else "Miss"}
+
+    # ---- GR-004a EPS Forecast Trend ----
+    fe_list = fund_data.get("forecast_eps", [])
+    if fe_list:
+        latest = fe_list[0]
+        prev = fe_list[1] if len(fe_list) > 1 else None
+        if latest.get("mean"):
+            signals["eps_forecast_mean"] = latest["mean"]
+            signals["eps_forecast_up"] = latest.get("up", 0)
+            signals["eps_forecast_down"] = latest.get("down", 0)
+            total = latest.get("total", 0)
+            up_ratio = round(latest["up"] / total * 100, 1) if total else 0
+            trend = "↑" if (prev and latest["mean"] > prev["mean"]) else "↓" if (prev and latest["mean"] < prev["mean"]) else "→"
+            research_inputs["GR-004a"] = {"label": "EPS Forecast Trend",
+                "claim": f"一致预期 EPS={latest['mean']:.2f} ({trend}), {latest['up']}/{total} 机构上调",
+                "assessment": "Bullish" if up_ratio > 60 else "Neutral" if up_ratio > 40 else "Bearish"}
 
     # ---- GR-005 Analyst Consensus ----
     ratings = fund_data.get("ratings", [])

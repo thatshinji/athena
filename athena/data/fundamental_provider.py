@@ -94,6 +94,57 @@ def fetch_fundamentals(symbol: str) -> Optional[Dict[str, Any]]:
     except Exception as e:
         logger.debug(f"财报失败 {symbol}: {e}")
 
+    # EPS 预测趋势
+    try:
+        fe = _fund_ctx.forecast_eps(s)
+        if fe and fe.items:
+            result["forecast_eps"] = [
+                {"end_date": i.forecast_end_date, "mean": float(i.forecast_eps_mean),
+                 "median": float(i.forecast_eps_median), "high": float(i.forecast_eps_highest),
+                 "low": float(i.forecast_eps_lowest), "up": int(i.institution_up),
+                 "down": int(i.institution_down), "total": int(i.institution_total)}
+                for i in fe.items[:4]
+            ]
+    except Exception as e:
+        logger.debug(f"EPS 预测失败 {symbol}: {e}")
+
+    # ETF/基金持仓
+    try:
+        fh = _fund_ctx.fund_holder(s)
+        if fh and fh.lists:
+            result["fund_holders"] = [
+                {"name": h.name, "code": h.code, "position_ratio": float(h.position_ratio),
+                 "report_date": h.report_date}
+                for h in fh.lists[:20]
+            ]
+    except Exception as e:
+        logger.debug(f"基金持仓失败 {symbol}: {e}")
+
+    # 大股东
+    try:
+        sh = _fund_ctx.shareholder(s)
+        if sh and sh.shareholder_list:
+            result["shareholders"] = [
+                {"name": h.shareholder_name, "pct": float(h.percent_of_shares),
+                 "changed": int(h.shares_changed) if h.shares_changed else 0,
+                 "report_date": h.report_date}
+                for h in sh.shareholder_list[:15]
+            ]
+    except Exception as e:
+        logger.debug(f"大股东失败 {symbol}: {e}")
+
+    # 结构化公司事件
+    try:
+        ca = _fund_ctx.corp_action(s)
+        if ca and ca.items:
+            result["corp_actions"] = [
+                {"date": c.date, "type": c.action or c.act_type,
+                 "desc": c.act_desc, "date_type": c.date_type}
+                for c in ca.items[:20]
+            ]
+    except Exception as e:
+        logger.debug(f"公司事件失败 {symbol}: {e}")
+
     return result if result else None
 
 
@@ -132,6 +183,7 @@ def _fetch_financial_report_inner(symbol_full: str) -> Dict:
         "EPS": "eps", "OperatingRevenue": "revenue",
         "GrossMgn": "gross_margin", "NetProfitMargin": "net_margin",
         "ROE": "roe", "OperatingIncome": "operating_income",
+        "NetProfit": "net_income",
     })
 
     # Balance Sheet
