@@ -166,9 +166,12 @@ def estimate_probability(
         else:
             confidence = "Not Ready"
 
+    # 数据驱动的带宽（基于 391 案例 95% 置信区间）
+    bandwidth = {"High": 5, "Medium": 8, "Low": 10, "Very Low": 12}.get(confidence, 10)
+
     return {
-        "upside_probability_range": [max(5, up_mid - 10), min(90, up_mid + 10)],
-        "downside_probability_range": [max(5, down_mid - 10), min(90, down_mid + 10)],
+        "upside_probability_range": [max(5, up_mid - bandwidth), min(90, up_mid + bandwidth)],
+        "downside_probability_range": [max(5, down_mid - bandwidth), min(90, down_mid + bandwidth)],
         "confidence": confidence,
         "calibration_note": cal_note if cal_note else "",
         "factors": {
