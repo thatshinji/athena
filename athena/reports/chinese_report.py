@@ -190,6 +190,19 @@ def _save_report(symbol: str, report: Dict) -> str:
     ts = datetime.now().strftime("%Y_%m%d_%H%M")
     fp = symbol_dir / f"{ts}.md"
     md = report.get("report_markdown", "") or _format_report_json(report)
+    # 注入数据来源与方法章节（不覆盖 LLM 已有内容）
+    if "## 数据来源" not in md and "数据来源与分析方法" not in md:
+        cal = report.get("calibration_note", "")
+        md += f"\n\n## 数据来源与分析方法\n"
+        md += "- **行情**：Longbridge OpenAPI LV1 实时行情 + yfinance 备选\n"
+        md += "- **财报**：Longbridge FundamentalContext（IS/BS/CF 三表）\n"
+        md += "- **估值**：Trailing PE / Forward PE / P/S / EV/EBIT / FCF Yield / 行业对比\n"
+        md += "- **技术面**：MA/RSI/ATR + Volume Profile（成交量分布）+ Market Structure（HH/HL 趋势结构）\n"
+        md += "- **催化剂**：新闻关键词检测 + corp_actions 结构化事件 + 具体标题与日期\n"
+        md += "- **资金流**：经纪商 + ETF 持仓 + 机构股东 + 大股东增减持\n"
+        md += "- **情绪**：新闻文本分析 + LongPort 社区讨论\n"
+        md += f"- **概率模型**：规则引擎打分 + 历史案例贝叶斯校准{('（' + cal + '）') if cal else ''}\n"
+        md += f"- **置信度**：{report.get('confidence', 'N/A')}\n"
     fp.write_text(md, encoding="utf-8")
     jp = symbol_dir / f"{ts}.json"
     jp.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
