@@ -240,6 +240,7 @@ def _save_report(symbol: str, report: Dict, result: Dict = None) -> str:
     # 追加 CLI 原始数据摘要（方便查阅）
     if result:
         md += _build_raw_data_appendix(result, report)
+        md += _build_cli_summary(result, report)
     fp.write_text(md, encoding="utf-8")
     jp = symbol_dir / f"{ts}.json"
     jp.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
@@ -360,3 +361,124 @@ def _build_rule_report(symbol, signals, latest, ri, status):
     watch.append("行业宏观政策变化")
 
     return up, down, key, missing, watch
+
+
+def _build_cli_summary(result: Dict, report: Dict) -> str:
+    """生成 CLI 风格的控制台摘要文本（带 emoji）。"""
+    latest = result.get("latest", {})
+    signals = result.get("signals", {})
+    ri = result.get("research_inputs", {})
+    ev = result.get("evidence", [])
+    cal = result.get("calibration", {})
+    sym = result.get("symbol", "?")
+    tech = signals.get("technical", signals)
+    fund = signals.get("fundamental", {})
+    val = signals.get("valuation", {})
+    cat = signals.get("catalyst", {})
+    fl = signals.get("flow", {})
+    rsk = signals.get("risk", {})
+
+    lines = []
+    a = lines.append
+    a(f"\n\n---\n\n## CLI 控制台摘要\n\n```")
+    a(f"{'='*60}")
+    a(f"  {sym} 研究报告")
+    a(f"{'='*60}")
+    a(f"  时间: {result.get('as_of', '')[:19]}")
+    a(f"  数据源: {result.get('source', 'N/A')}")
+    a(f"  收盘价: ${latest.get('close', 0):.2f}")
+    a("")
+
+    # 均线
+    a("  📊 均线:")
+    a(f"     MA20:  ${latest['ma20']:.2f}" if latest.get('ma20') else "     MA20:  N/A")
+    a(f"     MA50:  ${latest['ma50']:.2f}" if latest.get('ma50') else "     MA50:  N/A")
+    a(f"     MA200: ${latest['ma200']:.2f}" if latest.get('ma200') else "     MA200: N/A")
+    a(f"     判断: {tech['price']['description']}")
+    a("")
+
+    # 动量
+    a("  📈 动量:")
+    a(f"     RSI14: {latest.get('rsi14',0):.1f}" if latest.get('rsi14') else "     RSI14: N/A")
+    a(f"     判断: {tech['momentum']['description']}")
+    a("")
+
+    # 波动率
+    a("  📉 波动率:")
+    a(f"     ATR14: {latest.get('atr14',0):.2f}" if latest.get('atr14') else "     ATR14: N/A")
+    a(f"     ATR%:  {latest.get('atr_pct',0):.1f}%" if latest.get('atr_pct') else "     ATR%:  N/A")
+    a(f"     判断: {tech['volatility']['description']}")
+    a("")
+
+    # 基本面
+    if fund.get("available"):
+        eps = fund.get("eps", {})
+        rev = fund.get("revenue", {})
+        a("  💰 基本面:")
+        if eps:
+            a(f"     EPS: 实际=${eps.get('actual',0):.2f} vs 预期=${eps.get('estimate',0):.2f} ({eps.get('status','')})")
+        if rev:
+            a(f"     营收: ${rev.get('actual_billion',0)}B vs ${rev.get('estimate_billion',0)}B ({rev.get('status','')})")
+        a(f"     判断: {fund.get('description', '')}")
+        a("")
+    else:
+        a("  💰 基本面: 数据不可用")
+        a("")
+
+    # 估值
+    if val.get("available"):
+        pe = val.get("trailing_pe", {})
+        fwd = val.get("forward_pe", {})
+        a("  🏷️ 估值:")
+        if pe:
+            a(f"     PE: {pe.get('current', 'N/A')} (历史 {pe.get('percentile', '?')}分位)")
+        if fwd:
+            a(f"     Forward PE: {fwd.get('value', 'N/A')}")
+        a(f"     判断: {val.get('description', '')}")
+        a("")
+    else:
+        a("  🏷️ 估值: 数据不可用")
+        a("")
+
+    # 催化剂
+    if cat.get("available"):
+        a(f"  📰 催化剂: {cat.get('description', '')}")
+        a("")
+
+    # 资金流
+    if fl.get("available"):
+        a(f"  💵 资金流: {fl.get('description', '')}")
+        a("")
+
+    # 风险
+    if rsk.get("available"):
+        a(f"  ⚠️ 风险评级: {rsk.get('description', '')}")
+        a("")
+
+    # Research Input
+    a("  📋 Research Input 映射:")
+    for k, v in ri.items():
+        a(f"     {k} ({v['label']}): {v['assessment']}")
+    a("")
+
+    # Evidence
+    a(f"  📎 Evidence: {len(ev)} 条")
+    for e in ev:
+        a(f"     [{e.get('confidence', '?')}] {e.get('claim', '')[:80]}")
+    a("")
+
+    # 校准
+    if cal and cal.get("resolved_cases", 0) > 0:
+        a(f"  📊 历史校准 (已结 {cal['resolved_cases']} 案例):")
+        a(f"     Candidate 胜率: {cal.get('candidate_success_rate',0)}% {'✅ 高于盈亏平衡' if cal.get('above_balance') else '❌ 低于 33.3%'}")
+        a(f"     +20% 先达率: {cal.get('upside_first_rate',0)}%  -10% 先达率: {cal.get('stop_loss_first_rate',0)}%")
+        if cal.get('total_cases', 0) > cal.get('resolved_cases', 0):
+            a(f"     待结案例: {cal['total_cases'] - cal['resolved_cases']}")
+        a("")
+
+    # 判断
+    status_emoji = {"Candidate": "⭐", "Watch": "👀", "Reject": "❌", "Risk Alert": "⚠️"}.get(report.get("status", ""), "🤖")
+    a(f"  {status_emoji} 判断: {report.get('status', 'Unknown')} (置信度: {report.get('confidence', 'N/A')})")
+
+    lines.append("```")
+    return "\n".join(lines)
