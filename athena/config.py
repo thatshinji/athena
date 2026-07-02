@@ -35,7 +35,7 @@ class Settings:
     deepseek_api_key: str = field(
         default_factory=lambda: os.getenv("DEEPSEEK_API_KEY", "")
     )
-    deepseek_model: str = "deepseek-v4-flash"
+    deepseek_model: str = "deepseek-v4-pro"
     deepseek_base_url: str = "https://api.deepseek.com"
 
     # 数据

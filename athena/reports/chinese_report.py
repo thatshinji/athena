@@ -152,12 +152,12 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
             report = analyst.analyze(symbol, result["evidence"], result["signals"])
             analyst.close()
             result["report"] = report
-            result["report_path"] = _save_report(symbol, report)
+            result["report_path"] = _save_report(symbol, report, result)
         except Exception as e:
             logger.error(f"LLM 分析失败: {e}")
             result["report"] = {"status": "Not Ready", "confidence": "Not Ready",
                                 "error": str(e), "report_markdown": f"# LLM 调用出错: {e}"}
-            result["report_path"] = _save_report(symbol, result["report"])
+            result["report_path"] = _save_report(symbol, result["report"], result)
     else:
         try:
             from athena.probability import estimate_probability
@@ -169,7 +169,7 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
                 "confidence": prob["confidence"],
                 "key_evidence": prob["factors"]["bullish"][:3] + prob["factors"]["bearish"][:3],
                 "missing_evidence": [], "watchlist": [], "report_markdown": ""}
-            result["report_path"] = _save_report(symbol, result["report"])
+            result["report_path"] = _save_report(symbol, result["report"], result)
         except Exception as e:
             logger.debug(f"规则引擎失败: {e}")
 
@@ -184,7 +184,7 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
     return result
 
 
-def _save_report(symbol: str, report: Dict) -> str:
+def _save_report(symbol: str, report: Dict, result: Dict = None) -> str:
     symbol_dir = OUTPUT_DIR / symbol
     symbol_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now().strftime("%Y_%m%d_%H%M")
@@ -203,6 +203,9 @@ def _save_report(symbol: str, report: Dict) -> str:
         md += "- **情绪**：新闻文本分析 + LongPort 社区讨论\n"
         md += f"- **概率模型**：规则引擎打分 + 历史案例贝叶斯校准{('（' + cal + '）') if cal else ''}\n"
         md += f"- **置信度**：{report.get('confidence', 'N/A')}\n"
+    # 追加 CLI 原始数据摘要（方便查阅）
+    if result:
+        md += _build_raw_data_appendix(result, report)
     fp.write_text(md, encoding="utf-8")
     jp = symbol_dir / f"{ts}.json"
     jp.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
@@ -236,3 +239,36 @@ def _format_report_json(report: Dict) -> str:
 - 情绪：新闻文本分析 + LongPort 社区讨论
 - 概率模型：规则引擎打分 + 历史案例贝叶斯校准 ({report.get('calibration_note', '')})
 - 置信度：{report.get('confidence', 'N/A')}"""
+
+def _build_raw_data_appendix(result: Dict, report: Dict) -> str:
+    """构建原始数据摘要附录。"""
+    latest = result.get("latest", {})
+    ri = result.get("research_inputs", {})
+    ev = result.get("evidence", [])
+    cal = result.get("calibration", {})
+    signals = result.get("signals", {})
+
+    md = "\n\n---\n\n## 附录：原始数据摘要\n\n"
+    md += f"- **数据源**: {result.get('source', 'N/A')}\n"
+    if latest.get('close'):
+        md += f"- **收盘价**: ${latest['close']:.2f}\n"
+    md += f"- **MA20**: {latest.get('ma20', 'N/A')} | **MA50**: {latest.get('ma50', 'N/A')} | **MA200**: {latest.get('ma200', 'N/A')}\n"
+    md += f"- **RSI14**: {latest.get('rsi14', 'N/A')} | **ATR%**: {latest.get('atr_pct', 'N/A')}%\n"
+    md += f"- **52W High**: {latest.get('high_52w', 'N/A')} | **52W Low**: {latest.get('low_52w', 'N/A')}\n"
+    md += f"- **判断**: {report.get('status', 'N/A')} (置信度: {report.get('confidence', 'N/A')})\n"
+    up = report.get("upside_probability_range", [])
+    down = report.get("downside_probability_range", [])
+    if up and down:
+        md += f"- **+20% 概率**: {up[0]}-{up[1]}% | **-10% 概率**: {down[0]}-{down[1]}%\n"
+    rsk = signals.get("risk", {}).get("risk_score")
+    if rsk is not None:
+        md += f"- **风险评分**: {rsk}/10\n"
+    if cal and cal.get("resolved_cases", 0) > 0:
+        md += f"- **历史校准**: {cal['resolved_cases']} 已结案例, Candidate 胜率 {cal['candidate_success_rate']}%\n"
+    md += "\n### Research Input 映射\n\n| ID | 标签 | 评估 |\n|----|------|------|\n"
+    for k, v in ri.items():
+        md += f"| {k} | {v.get('label', 'N/A')} | {v.get('assessment', 'N/A')} |\n"
+    md += f"\n### Evidence ({len(ev)} 条)\n\n"
+    for e in ev:
+        md += f"- [{e.get('confidence', '?')}] {e.get('claim', '')[:100]}\n"
+    return md
