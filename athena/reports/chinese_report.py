@@ -160,6 +160,15 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
             report["upside_probability_range"] = prob["upside_probability_range"]
             report["downside_probability_range"] = prob["downside_probability_range"]
             report["confidence"] = prob["confidence"]
+            # 修正 LLM 报告文字中的概率数字（LLM 可能自己编了不一致的数字）
+            md = report.get("report_markdown", "")
+            if md:
+                up_str = f"{prob['upside_probability_range'][0]}%-{prob['upside_probability_range'][1]}%"
+                down_str = f"{prob['downside_probability_range'][0]}%-{prob['downside_probability_range'][1]}%"
+                import re
+                md = re.sub(r'\d+%-\d+%.*?(上行|上涨).*?概率', f'{up_str}（上行概率）', md, count=1)
+                md = re.sub(r'\d+%-\d+%.*?(下行|下跌).*?概率', f'{down_str}（下行概率）', md, count=1)
+                report["report_markdown"] = md
             result["report"] = report
             result["report_path"] = _save_report(symbol, report, result)
         except Exception as e:
