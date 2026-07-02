@@ -172,12 +172,16 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
             from athena.probability import estimate_probability
             from athena.probability.engine import _classify_status
             prob = estimate_probability(all_signals, tech_result["latest"]["close"])
-            result["report"] = {"symbol": symbol, "status": _classify_status(prob, all_signals),
+            status = _classify_status(prob, all_signals)
+            up_path, down_risks, key_ev, missing, watch = _build_rule_report(
+                symbol, all_signals, tech_result["latest"], all_ri, status)
+            result["report"] = {"symbol": symbol, "status": status,
                 "upside_probability_range": prob["upside_probability_range"],
                 "downside_probability_range": prob["downside_probability_range"],
                 "confidence": prob["confidence"],
-                "key_evidence": prob["factors"]["bullish"][:3] + prob["factors"]["bearish"][:3],
-                "missing_evidence": [], "watchlist": [], "report_markdown": ""}
+                "upside_path": up_path, "downside_risks": down_risks,
+                "key_evidence": key_ev, "missing_evidence": missing,
+                "watchlist": watch, "report_markdown": ""}
             result["report_path"] = _save_report(symbol, result["report"], result)
         except Exception as e:
             logger.debug(f"规则引擎失败: {e}")
@@ -294,3 +298,57 @@ def _build_raw_data_appendix(result: Dict, report: Dict) -> str:
     for e in ev:
         md += f"- [{e.get('confidence', '?')}] {e.get('claim', '')[:100]}\n"
     return md
+
+
+def _build_rule_report(symbol, signals, latest, ri, status):
+    tech = signals.get("technical", {})
+    fund = signals.get("fundamental", {})
+    val = signals.get("valuation", {})
+    risk = signals.get("risk", {})
+    flow = signals.get("flow", {})
+    cat = signals.get("catalyst", {})
+    sent = signals.get("sentiment", {})
+
+    up = []; down = []; key = []; missing = []; watch = []
+    rev_yoy = fund.get("revenue_yoy", 0) or 0
+    eps_beat = fund.get("eps", {}).get("beat_pct", 0) or 0
+    atr = latest.get("atr_pct", 0) or 0
+    pe = val.get("trailing_pe", {}).get("current")
+    risk_score = risk.get("risk_score", 0) or 0
+
+    # 上行
+    if tech.get("price", {}).get("alignment", {}).get("type") in ("strong_bullish", "bullish"):
+        up.append("技术面多头排列，价格站上关键均线")
+    if rev_yoy > 10: up.append(f"营收同比增长 {rev_yoy}%，高增速支撑")
+    if eps_beat > 3: up.append(f"EPS 超预期 {eps_beat:.0f}%，盈利改善")
+    if pe and pe < 30: up.append(f"PE {pe}，估值合理有安全边际")
+    if flow.get("institutional", {}).get("trend") == "accumulating": up.append("机构资金持续增持")
+    if not up: up.append("暂无明显上行催化，需等待突破信号")
+
+    # 下行
+    if atr > 5: down.append(f"ATR {atr}% 偏高，止损易触发")
+    if eps_beat < 0: down.append("EPS 低于预期")
+    if val.get("forward_pe", {}).get("value", 0) or 0 > 40: down.append("Forward PE 偏高")
+    if risk_score >= 5: down.append(f"风险评分 {risk_score}/10")
+    if sent.get("news", {}).get("direction") == "negative": down.append("新闻情绪偏负面")
+    if not down: down.append("未检测到显著下行风险因子")
+
+    # 证据
+    key.append(f"收盘价 ${latest.get('close','N/A')}，MA20 {latest.get('ma20','N/A')}，RSI {latest.get('rsi14','N/A')}，ATR {atr}%")
+    if fund.get("available"): key.append(f"营收 YoY {rev_yoy}%，EPS beat {eps_beat}%")
+    key.append(f"风险评分 {risk_score}/10")
+    if cat.get("available"): key.append(f"{cat.get('catalyst_count',0)} 个潜在催化剂")
+
+    # 缺失
+    if not fund.get("available"): missing.append("基本面数据不可用")
+    if not flow.get("available"): missing.append("资金流数据不足")
+    if not missing: missing.append("各维度数据基本齐全")
+
+    # 观察
+    watch.append(f"股价能否站稳 MA20 ({latest.get('ma20','N/A')})")
+    watch.append(f"ATR 是否收敛（当前 {atr}%）")
+    watch.append("下一季度财报的营收/利润率变化")
+    watch.append("机构持仓趋势变化")
+    watch.append("行业宏观政策变化")
+
+    return up, down, key, missing, watch
