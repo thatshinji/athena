@@ -157,6 +157,7 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
             logger.error(f"LLM 分析失败: {e}")
             result["report"] = {"status": "Not Ready", "confidence": "Not Ready",
                                 "error": str(e), "report_markdown": f"# LLM 调用出错: {e}"}
+            result["report_path"] = _save_report(symbol, result["report"])
     else:
         try:
             from athena.probability import estimate_probability
@@ -168,6 +169,7 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
                 "confidence": prob["confidence"],
                 "key_evidence": prob["factors"]["bullish"][:3] + prob["factors"]["bearish"][:3],
                 "missing_evidence": [], "watchlist": [], "report_markdown": ""}
+            result["report_path"] = _save_report(symbol, result["report"])
         except Exception as e:
             logger.debug(f"规则引擎失败: {e}")
 
@@ -183,12 +185,13 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
 
 
 def _save_report(symbol: str, report: Dict) -> str:
-    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    fp = OUTPUT_DIR / f"{symbol}_report_{ts}.md"
+    symbol_dir = OUTPUT_DIR / symbol
+    symbol_dir.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime("%Y_%m%d_%H%M")
+    fp = symbol_dir / f"{ts}.md"
     md = report.get("report_markdown", "") or _format_report_json(report)
     fp.write_text(md, encoding="utf-8")
-    jp = OUTPUT_DIR / f"{symbol}_report_{ts}.json"
+    jp = symbol_dir / f"{ts}.json"
     jp.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return str(fp)
 

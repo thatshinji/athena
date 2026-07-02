@@ -11,8 +11,7 @@ dist/
 build/
 
 # 输出报告
-athena/outputs/*.md
-athena/outputs/*.json
+athena/outputs/*/
 
 # 历史案例（含真实数据）
 athena/validation/case_data/
