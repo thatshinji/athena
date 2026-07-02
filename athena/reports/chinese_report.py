@@ -190,6 +190,19 @@ def _save_report(symbol: str, report: Dict, result: Dict = None) -> str:
     ts = datetime.now().strftime("%Y_%m%d_%H%M")
     fp = symbol_dir / f"{ts}.md"
     md = report.get("report_markdown", "") or _format_report_json(report)
+    # 后处理：修复 markdown 标题格式
+    import re
+    nums = "一二三四五六七八九十"
+    sec_names = ["研究结论", "+20% 上行路径", "-10% 下行风险", "技术面判断",
+                 "基本面判断", "估值与预期判断", "消息面与催化剂", "资金流与情绪",
+                 "风险官反驳", "最终判断与观察清单"]
+    for i in range(10):
+        n, s = nums[i], sec_names[i]
+        # 先剥离所有已有前缀，再统一添加 ##
+        md = re.sub(rf'(\*\*|##\s*)?{n}、{s}(\*\*)?', f'## {n}、{s}', md)
+    # 截断尾部不完整句子（LLM 超时截断）
+    if md.rstrip().endswith(('；', '：', '，', ',')):
+        md = md.rstrip().rstrip('；：，,') + '。'
     # 注入数据来源与方法章节（不覆盖 LLM 已有内容）
     if "## 数据来源" not in md and "数据来源与分析方法" not in md:
         cal = report.get("calibration_note", "")
