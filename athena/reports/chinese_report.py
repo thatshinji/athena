@@ -148,9 +148,18 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
     if use_llm and settings.deepseek_configured:
         try:
             from athena.llm.analyst import DeepSeekAnalyst
+            # 规则引擎计算确定性概率
+            from athena.probability import estimate_probability
+            prob = estimate_probability(all_signals, tech_result["latest"]["close"])
             analyst = DeepSeekAnalyst()
-            report = analyst.analyze(symbol, result["evidence"], result["signals"])
+            report = analyst.analyze(symbol, result["evidence"], result["signals"],
+                                     prob["upside_probability_range"],
+                                     prob["downside_probability_range"])
             analyst.close()
+            # 规则引擎概率覆盖 LLM 输出（确保一致性）
+            report["upside_probability_range"] = prob["upside_probability_range"]
+            report["downside_probability_range"] = prob["downside_probability_range"]
+            report["confidence"] = prob["confidence"]
             result["report"] = report
             result["report_path"] = _save_report(symbol, report, result)
         except Exception as e:
