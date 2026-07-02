@@ -21,6 +21,7 @@ from athena.signals.flow import compute_flow_signals
 from athena.signals.sentiment import compute_sentiment_signals
 from athena.signals.political import compute_political_signals
 from athena.signals.macro import compute_macro_signals
+from athena.signals.supply_chain import compute_supply_chain_signals, SUPPLY_CHAIN_MAP
 from athena.evidence.models import Evidence, build_price_evidence
 from athena.evidence.store import EvidenceStore
 
@@ -37,6 +38,24 @@ def _fetch_industry_valuation(symbol: str):
     except Exception:
         pass
     return None
+
+
+
+def _fetch_supplier_prices(symbol, provider):
+    """获取供应商近期价格变化"""
+    chain = SUPPLY_CHAIN_MAP.get(symbol.upper().replace(".US",""), {}).get("suppliers", [])
+    if not chain:
+        return None
+    result = {}
+    for ticker in chain[:5]:
+        try:
+            df = provider.fetch_history(ticker, days=30)
+            if df is not None and len(df) >= 10:
+                pct = round((df["close"].iloc[-1] / df["close"].iloc[0] - 1) * 100, 1)
+                result[ticker] = pct
+        except Exception:
+            pass
+    return result if result else None
 
 
 def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict:
@@ -77,8 +96,12 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
 
     risk_result = compute_risk_signals(tech_result["signals"], fund_result["signals"], val_result["signals"])
 
+    # 供应链
+    supplier_prices = _fetch_supplier_prices(symbol, provider)
+    sc_result = compute_supply_chain_signals(symbol, news_list, supplier_prices)
+
     all_ri = {}
-    for r in [tech_result, fund_result, val_result, risk_result, cat_result, flow_result, sent_result, pol_result, macro_result]:
+    for r in [tech_result, fund_result, val_result, risk_result, cat_result, flow_result, sent_result, pol_result, macro_result, sc_result]:
         all_ri.update(r["research_inputs"])
 
     all_signals = {
@@ -87,6 +110,7 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
         "catalyst": cat_result["signals"], "flow": flow_result["signals"],
         "sentiment": sent_result["signals"], "political": pol_result["signals"],
         "macro": macro_result["signals"],
+        "supply_chain": sc_result["signals"],
     }
 
     source = provider.data_source
@@ -109,6 +133,7 @@ def generate_report(symbol: str, days: int = 250, use_llm: bool = False) -> Dict
     _add_evidence(sent_result["research_inputs"], "sentiment", "sentiment")
     _add_evidence(pol_result["research_inputs"], "political", "political")
     _add_evidence(macro_result["research_inputs"], "macro", "macro")
+    _add_evidence(sc_result["research_inputs"], "supply_chain", "supply_chain")
 
     store = EvidenceStore()
     store.add_all(evidence_list)

@@ -88,6 +88,29 @@ Athena 应优先接入直接影响 +20% / -10% 判断的数据。
 - supply chain event
 - industry theme acceleration
 
+## 5a. 供应链与产业链（催化剂扩展）
+
+用途：监测产业链上下游联动信号，判断成本压力和供应风险。
+
+数据来源：
+
+- 供应商股价联动：自动拉取已知供应商近期行情，计算供应商指数
+- 供应链新闻：检测芯片短缺/涨价/关税/物流/人工等关键词
+- 成本方向：从新闻文本判断成本上升/下降/稳定的趋势信号
+
+输出 Evidence：
+
+```json
+{
+  "symbol": "AAPL",
+  "evidence_type": "supply_chain",
+  "as_of": "2026-07-02",
+  "claim": "5家供应商: 平均+2.3% (3涨1跌1平), 供应链新闻8条: chip_shortage(3) cost_pressure(3) tariff(2)",
+  "source": "longbridge",
+  "confidence": "Medium"
+}
+```
+
 ## 6. 第五优先级：资金流与持仓
 
 用途：判断资金是否正在进入或撤出。

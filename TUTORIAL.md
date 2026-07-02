@@ -118,6 +118,7 @@ Athena 分析一只股票时计算 **9 类信号**、**35+ Research Inputs**：
 | 情绪 | 新闻情绪 + LongPort 社区讨论 | Longbridge 新闻 + 社区 |
 | 政治 | 国会交易（需要 Quiver API key） | Quiver Quantitative |
 | 宏观 | 行业估值对比（同行 PE 中位/折溢价） | Longbridge 行业 |
+| 供应链 | 供应商股价指数 + 供应链新闻监测 | Longbridge 行情 + 新闻 |
 
 ---
 
