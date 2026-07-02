@@ -38,7 +38,8 @@ class DeepSeekAnalyst:
         self._http = httpx.Client(timeout=httpx.Timeout(120.0))
 
     def analyze(
-        self, symbol: str, evidence_list: list, signals: dict
+        self, symbol: str, evidence_list: list, signals: dict,
+        ups_range=None, downs_range=None
     ) -> Dict:
         """执行研究分析。
 
