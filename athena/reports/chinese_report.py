@@ -213,4 +213,13 @@ def _format_report_json(report: Dict) -> str:
 {chr(10).join('- ' + e for e in report.get('missing_evidence', [])) or '无'}
 ## 观察清单
 {chr(10).join('- ' + w for w in report.get('watchlist', [])) or '无'}
-"""
+## 数据来源与分析方法
+- 行情数据：Longbridge OpenAPI (LV1 实时行情) + yfinance 备选
+- 基本面：Longbridge FundamentalContext (IS/BS/CF 三表 + 一致预期)
+- 估值：Trailing PE / Forward PE / P/S / EV/EBIT / FCF Yield / 行业对比
+- 技术面：MA/RSI/ATR + Volume Profile + Market Structure (HH/HL)
+- 催化剂：新闻关键词检测 + 结构化公司事件 (corp_actions)
+- 资金流：经纪商 + ETF 持仓 + 机构股东 + 大股东增减持
+- 情绪：新闻文本分析 + LongPort 社区讨论
+- 概率模型：规则引擎打分 + 历史案例贝叶斯校准 ({report.get('calibration_note', '')})
+- 置信度：{report.get('confidence', 'N/A')}"""

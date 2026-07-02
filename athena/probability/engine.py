@@ -1,10 +1,27 @@
 """概率引擎 — 第一版：规则 + 信号驱动。
 
-在 LLM 不可用时提供基于规则的概率估计，作为兜底。
-后续通过 historical cases 校准。
+在 LLM 不可用时提供基于规则的概率估计。
+通过 validation 历史案例库做统计校准，避免纯主观打分。
 """
 
 from typing import Dict, List, Optional, Tuple
+
+
+def _get_historical_baseline():
+    """从 validation 历史案例库获取校准基准。"""
+    try:
+        from athena.validation import store
+        m = store.calibration_metrics()
+        if m.get("resolved_cases", 0) >= 5:
+            return {
+                "success_rate": m["candidate_success_rate"],
+                "upside_first": m["upside_first_rate"],
+                "stop_loss_first": m["stop_loss_first_rate"],
+                "total_cases": m["resolved_cases"],
+            }
+    except Exception:
+        pass
+    return None
 
 
 def estimate_probability(
@@ -124,7 +141,18 @@ def estimate_probability(
         up_mid = round(15 + up_ratio * 55)
         down_mid = round(15 + (1 - up_ratio) * 55)
 
-        # 5 档置信度（08_RISK §6）
+        # ---- 历史校准修正（贝叶斯风格回归） ----
+        calibration = _get_historical_baseline()
+        cal_note = ""
+        if calibration and calibration["total_cases"] >= 5:
+            hist_up = calibration["upside_first"]
+            hist_down = calibration["stop_loss_first"]
+            blend = min(0.3, calibration["total_cases"] / 100)
+            up_mid = round(up_mid * (1 - blend) + hist_up * blend)
+            down_mid = round(down_mid * (1 - blend) + hist_down * blend)
+            cal_note = f" (基于 {calibration['total_cases']} 案例校准)"
+
+    # 5 档置信度（08_RISK §6）
         if bullish >= 5 and bullish > bearish * 2.0:
             confidence = "High"
         elif bearish >= 5 and bearish > bullish * 2.0:
@@ -142,6 +170,7 @@ def estimate_probability(
         "upside_probability_range": [max(5, up_mid - 10), min(90, up_mid + 10)],
         "downside_probability_range": [max(5, down_mid - 10), min(90, down_mid + 10)],
         "confidence": confidence,
+        "calibration_note": cal_note if cal_note else "",
         "factors": {
             "bullish": reasons_up[:5],
             "bearish": reasons_down[:5],

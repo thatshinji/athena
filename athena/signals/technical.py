@@ -131,6 +131,11 @@ def compute_technical_signals(df: pd.DataFrame, benchmark_df: pd.DataFrame = Non
     if benchmark_df is not None and len(benchmark_df) >= 20:
         rel_spy = compute_relative_strength(close, benchmark_df["close"])
 
+    # Volume Profile（成交量分布：近 60 日支撑/阻力）
+    vol_profile = _compute_volume_profile(df.tail(60))
+    # Market Structure（趋势结构：HH/HL/LH/LL）
+    mkt_structure = _analyze_market_structure(high, low, close)
+
     # 分类判断
     alignment = _classify_alignment(latest_close, latest_ma20, latest_ma50, latest_ma200)
     trend = _classify_trend(close, ma20, ma50)
@@ -155,44 +160,22 @@ def compute_technical_signals(df: pd.DataFrame, benchmark_df: pd.DataFrame = Non
 
     signals = {
         "price": {
-            "close": latest_close,
-            "ma20": latest_ma20,
-            "ma50": latest_ma50,
-            "ma200": latest_ma200,
-            "high_52w": high_52w,
-            "low_52w": low_52w,
-            "alignment": alignment,
-            "description": alignment["description_zh"],
+            "close": latest_close, "ma20": latest_ma20, "ma50": latest_ma50, "ma200": latest_ma200,
+            "high_52w": high_52w, "low_52w": low_52w,
+            "alignment": alignment, "description": alignment["description_zh"],
         },
-        "momentum": {
-            "rsi14": latest_rsi,
-            "status": rsi_status,
-            "description": rsi_status["description_zh"],
-        },
-        "volatility": {
-            "atr14": latest_atr,
-            "atr_pct": round(atr_pct, 2) if atr_pct else None,
-            "atr_stop_assessment": atr_stop_assessment,
-            "description": atr_stop_assessment["description_zh"],
-        },
-        "volume": {
-            "latest": int(volume.iloc[-1]),
-            "avg_20d": int(latest_vol_avg) if latest_vol_avg else None,
-            "volume_ratio": (
-                round(float(volume.iloc[-1]) / latest_vol_avg, 2)
-                if latest_vol_avg and latest_vol_avg > 0 else None
-            ),
-        },
-        "support_resistance": {
-            "high_52w": high_52w,
-            "low_52w": low_52w,
-            "pct_from_high": pct_from_high,
-            "pct_from_low": pct_from_low,
-            "status": support_resistance["status"],
-            "description": support_resistance["description_zh"],
-        },
+        "momentum": {"rsi14": latest_rsi, "status": rsi_status, "description": rsi_status["description_zh"]},
+        "volatility": {"atr14": latest_atr, "atr_pct": round(atr_pct, 2) if atr_pct else None,
+            "atr_stop_assessment": atr_stop_assessment, "description": atr_stop_assessment["description_zh"]},
+        "volume": {"latest": int(volume.iloc[-1]), "avg_20d": int(latest_vol_avg) if latest_vol_avg else None,
+            "volume_ratio": (round(float(volume.iloc[-1]) / latest_vol_avg, 2) if latest_vol_avg and latest_vol_avg > 0 else None)},
+        "support_resistance": {"high_52w": high_52w, "low_52w": low_52w,
+            "pct_from_high": pct_from_high, "pct_from_low": pct_from_low,
+            "status": support_resistance["status"], "description": support_resistance["description_zh"]},
         "relative_strength": rel_spy,
     }
+
+
 
     research_inputs = {
         "TC-001": {
@@ -215,6 +198,24 @@ def compute_technical_signals(df: pd.DataFrame, benchmark_df: pd.DataFrame = Non
             "claim": f"52W High={high_52w}, 52W Low={low_52w}, "
                      f"距高点{pct_from_high}%, 距低点{pct_from_low}%",
             "assessment": support_resistance["description_zh"],
+        },
+        "TC-007": {
+            "label": "Volume Profile",
+            "claim": vol_profile["description_zh"] if vol_profile else "数据不足",
+            "assessment": (
+                "Distribution (顶部放量)" if (vol_profile and vol_profile.get("zone") == "distribution")
+                else "Accumulation (底部放量)" if (vol_profile and vol_profile.get("zone") == "accumulation")
+                else "Neutral" if vol_profile else "N/A"
+            ),
+        },
+        "TC-008": {
+            "label": "Market Structure",
+            "claim": mkt_structure["description_zh"] if mkt_structure else "数据不足",
+            "assessment": (
+                "Uptrend" if (mkt_structure and mkt_structure.get("trend") == "uptrend")
+                else "Downtrend" if (mkt_structure and mkt_structure.get("trend") == "downtrend")
+                else "Sideways" if mkt_structure else "N/A"
+            ),
         },
         "RS-001": {
             "label": "Relative Strength vs SPY",
@@ -341,3 +342,65 @@ def _classify_support_resistance(close, high_52w, low_52w) -> Dict:
     else:
         return {"status": "mid_range",
                 "description_zh": f"股价位于 52 周区间的中间位置，距高点 {pct_from_high:.1f}%，距低点 +{pct_from_low:.1f}%"}
+
+
+# ---- Volume Profile ----
+
+def _compute_volume_profile(df_tail):
+    """计算近 60 日成交量分布，判断支撑/阻力区域。"""
+    if len(df_tail) < 10:
+        return None
+    close = df_tail["close"]
+    volume = df_tail["volume"]
+    current = float(close.iloc[-1])
+    # 分 5 个价格区间
+    price_bins = pd.cut(close, bins=5)
+    vol_per_bin = volume.groupby(price_bins).sum()
+    # 找到最大成交量区间
+    max_bin = vol_per_bin.idxmax()
+    max_vol_pct = float(vol_per_bin.max() / vol_per_bin.sum() * 100)
+    # 判断当前价格相对于量能区的位罝
+    bin_mid = (max_bin.left + max_bin.right) / 2
+    if current > bin_mid:
+        zone = "distribution"  # 当前价高于高量区 → 可能套牢盘
+    elif current < bin_mid:
+        zone = "accumulation"  # 当前价低于高量区 → 可能支撑
+    else:
+        zone = "neutral"
+    if zone == "distribution":
+        desc = f"价格位于成交量密集区上方 (高量占比 {max_vol_pct:.0f}%)，存在套牢盘压力"
+    elif zone == "accumulation":
+        desc = f"价格位于成交量密集区下方 (高量占比 {max_vol_pct:.0f}%)，存在支撑"
+    else:
+        desc = f"价格位于成交量密集区内 (高量占比 {max_vol_pct:.0f}%)"
+    return {"zone": zone, "max_vol_pct": round(max_vol_pct, 1), "description_zh": desc}
+
+
+# ---- Market Structure ----
+
+def _analyze_market_structure(high, low, close):
+    """分析最近 20 根 K 线的趋势结构（HH/HL/LH/LL）。"""
+    if len(close) < 20:
+        return None
+    h = list(high.iloc[-20:])
+    l = list(low.iloc[-20:])
+    # 找局部极值（每 5 根一个 swing point）
+    swing_highs = []
+    swing_lows = []
+    for i in range(2, 18):
+        if h[i] > h[i-1] and h[i] > h[i-2] and h[i] > h[i+1] and h[i] > h[i+2]:
+            swing_highs.append(h[i])
+        if l[i] < l[i-1] and l[i] < l[i-2] and l[i] < l[i+1] and l[i] < l[i+2]:
+            swing_lows.append(l[i])
+    if len(swing_highs) < 2 or len(swing_lows) < 2:
+        return None
+    # 判断 HH/HL 和 LH/LL
+    hh = swing_highs[-1] > swing_highs[-2]
+    hl = swing_lows[-1] > swing_lows[-2]
+    if hh and hl:
+        trend, desc = "uptrend", "上升趋势 (Higher High + Higher Low)"
+    elif not hh and not hl:
+        trend, desc = "downtrend", "下降趋势 (Lower High + Lower Low)"
+    else:
+        trend, desc = "sideways", "震荡格局 (无明确 HH/HL 或 LH/LL)"
+    return {"trend": trend, "description_zh": desc}

@@ -61,9 +61,11 @@ def compute_catalyst_signals(
                     "title": f"[{ca.get('date_type','')}] {cat_desc}", "categories": [mapped]})
 
     cat_counts = {}
+    detailed_catalysts = []
     for c in catalysts:
         for cat in c["categories"]:
             cat_counts[cat] = cat_counts.get(cat, 0) + 1
+        detailed_catalysts.append(f"{c['date']}: {c['title'][:60]}")
 
     has_catalyst = len(catalysts) > 0
     top_cats = sorted(cat_counts.items(), key=lambda x: -x[1])[:3]
@@ -72,6 +74,7 @@ def compute_catalyst_signals(
         "available": True, "news_count": news_count, "catalyst_count": len(catalysts),
         "has_major_catalyst": any(cat in ("earnings", "product", "ai_data_center", "ma") for cat in cat_counts),
         "top_categories": [c[0] for c in top_cats],
+        "detail": detailed_catalysts[:8],  # 前 8 个具体催化剂
         "description": (f"检测到 {len(catalysts)} 个潜在催化剂 ({', '.join(c[0] for c in top_cats)})"
                         if has_catalyst else "未检测到明显催化剂"),
     }
