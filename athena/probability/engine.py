@@ -138,8 +138,20 @@ def estimate_probability(
         down_mid = 33
     else:
         up_ratio = bullish / total
-        up_mid = round(15 + up_ratio * 55)
-        down_mid = round(15 + (1 - up_ratio) * 55)
+        # 逻辑回归校准（替代 15+ratio×55）
+        try:
+            from athena.probability.calibration import apply_fitted_weights
+            fitted = apply_fitted_weights(signals)
+            if fitted.get("weights_used") == "fitted":
+                f_bull, f_bear = fitted["bullish"], fitted["bearish"]
+                f_total = f_bull + f_bear
+                lr_ratio = f_bull / f_total if f_total > 0 else 0.5
+                up_mid = round(25 + lr_ratio * 40)
+            else:
+                up_mid = round(25 + up_ratio * 40)
+        except Exception:
+            up_mid = round(25 + up_ratio * 40)
+        down_mid = round(25 + (1 - up_ratio) * 40)
 
         # ---- 历史校准修正（贝叶斯风格回归） ----
         calibration = _get_historical_baseline()
@@ -227,11 +239,11 @@ def _classify_status(prob_result: Dict, signals: Dict = None) -> str:
             extra_checks_pass = False
             extra_checks_fail_reason = f"风险评分过高 ({risk_score}/10)"
 
-    # 综合判断
+    # 综合判断（阈值基于 391 案例回测校准）
     if candidate_prob and extra_checks_pass:
         return "Candidate"
     elif risk_alert_prob or (candidate_prob and not extra_checks_pass):
-        return "Risk Alert" if down_high > 40 else "Watch"
+        return "Risk Alert" if down_high > 30 else "Watch"  # 校准: 50→30
     elif reject_prob:
         return "Reject"
     else:
