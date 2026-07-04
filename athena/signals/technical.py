@@ -355,7 +355,7 @@ def _compute_volume_profile(df_tail):
     current = float(close.iloc[-1])
     # 分 5 个价格区间
     price_bins = pd.cut(close, bins=5)
-    vol_per_bin = volume.groupby(price_bins).sum()
+    vol_per_bin = volume.groupby(price_bins, observed=False).sum()
     # 找到最大成交量区间
     max_bin = vol_per_bin.idxmax()
     max_vol_pct = float(vol_per_bin.max() / vol_per_bin.sum() * 100)

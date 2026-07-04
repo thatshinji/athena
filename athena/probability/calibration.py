@@ -86,8 +86,11 @@ def fit_logistic_weights(cases: List[CaseRecord]) -> Tuple[Dict[str, float], flo
     y = np.array(y)
 
     # 训练逻辑回归
-    model = LogisticRegression(penalty="l2", C=1.0, solver="lbfgs", max_iter=1000)
-    model.fit(X, y)
+    model = LogisticRegression(penalty="l2", C=1.0, solver="lbfgs", max_iter=5000, tol=1e-4)
+    import warnings
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        model.fit(X, y)
 
     # 提取权重
     fitted = dict(zip(feature_names, model.coef_[0]))
